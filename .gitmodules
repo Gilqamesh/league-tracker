@@ -1,0 +1,9 @@
+[submodule "raylib"]
+	path = raylib
+	url = https://github.com/raysan5/raylib.git
+[submodule "gil_asset_manager"]
+	path = gil_asset_manager
+	url = https://github.com/Gilqamesh/gil_asset_manager.git
+[submodule "gil_riot"]
+	path = gil_riot
+	url = https://github.com/Gilqamesh/gil_riot.git
