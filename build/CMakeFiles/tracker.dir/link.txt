@@ -1,0 +1,1 @@
+/usr/bin/c++ -g CMakeFiles/tracker.dir/main.cpp.o -o tracker  raylib/raylib/libraylib.a gil_asset_manager/libgilassetmanager.a gil_riot/libgilriot.a -lm -lpthread /usr/lib64/libOpenGL.so /usr/lib64/libGLX.so /usr/lib64/libGLU.so /usr/lib64/librt.a -lm -ldl gil_asset_manager/gil_web/libgilweb.a /usr/lib64/libssl.so /usr/lib64/libcrypto.so 

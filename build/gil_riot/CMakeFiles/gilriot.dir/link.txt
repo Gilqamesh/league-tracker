@@ -1,0 +1,2 @@
+/usr/bin/ar qc libgilriot.a CMakeFiles/gilriot.dir/riot.cpp.o
+/usr/bin/ranlib libgilriot.a

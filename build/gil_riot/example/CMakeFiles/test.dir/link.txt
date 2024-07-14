@@ -1,0 +1,1 @@
+/usr/bin/c++ -g CMakeFiles/test.dir/test.cpp.o -o test  ../libgilriot.a ../../gil_asset_manager/gil_web/libgilweb.a /usr/lib64/libssl.so /usr/lib64/libcrypto.so 

@@ -11,6 +11,11 @@
 #include <fstream>
 #include <cstring>
 
+/*
+    patch: zilean's faction is "shurima"
+
+*/
+
 #define ARRAY_SIZE(arr) (sizeof(arr)/sizeof((arr)[0]))
 
 struct asset_data_json_t : public asset_data_base_t {
@@ -26,12 +31,19 @@ struct challenge_t {
     std::string               state;
     std::string               tier;
     std::string               next_tier;
+    std::string               title; // todo: add this
+    Texture2D                 icon;
     double                    percentile;
     double                    value;
     double                    next_value;
     time_t                    achieved_time;
     std::vector<challenge_t*> children;
     challenge_t*              parent;
+
+    /*
+        303510 -> champions where "faction": "shurima"
+        dependencies
+    */
 };
 
 struct {
@@ -45,7 +57,11 @@ struct {
     bool is_tag_line_text_box_active;
     char tag_line_text_box[256];
     nlohmann::json account_challenges;
+
     nlohmann::json global_challenges;
+    nlohmann::json challenges_local;
+
+    nlohmann::json champions_info;
 
     challenge_t* current_challange;
     challenge_t* challanges_root;
@@ -53,6 +69,28 @@ struct {
     riot_api riot;
     asset_manager_t asset_manager;
 } _;
+
+static void display_champion(const std::string& champion_name) {
+    for (const auto& champion : _.champions_info) {
+        if (champion["name"] == champion_name) {
+            std::cout << champion.dump(4) << std::endl;
+            return ;
+        }
+    }
+}
+
+static void display_faction(const std::string& faction_name) {
+    for (const auto& champion : _.champions_info) {
+        auto faction_obj = champion.find("faction");
+        if (faction_obj != champion.end()) {
+            const auto& faction = faction_obj.value();
+            assert(faction.is_string());
+            if (faction == faction_name) {
+                std::cout << champion["name"] << std::endl;
+            }
+        }
+    }
+}
 
 #if defined(PLATFORM_WEB)
 static void update_and_draw();
@@ -63,9 +101,11 @@ static void update(double dt);
 static void draw();
 static void draw_challenges();
 static void draw_challenge(challenge_t* node, const Rectangle& rec, int is_detailed);
+static void draw_challenge_icon(challenge_t* node, const Rectangle& rec);
 static void draw_challenge_description(challenge_t* node, const Rectangle& rec, int is_detailed);
 static void draw_challenge_top(challenge_t* node, const Rectangle& rec, int is_detailed);
 static void draw_challenge_value_bar(challenge_t* node, const Rectangle& rec);
+static void draw_challenge_specifics(challenge_t* node, const Rectangle& rec);
 static void draw_challenges_category_points();
 static void draw_current_challenge();
 static int  draw_text_in_rec(const char* text, const Rectangle& rec);
@@ -133,6 +173,18 @@ static void build_challenges(const nlohmann::json& global_challenges, const nloh
     legacy->next_value = 0;
     legacy->achieved_time = 0;
     legacy->parent = 0;
+    const auto find_challenge_icon_path = [](challenge_t* incomplete_challenge) {
+        for (const auto& challenge : _.challenges_local) {
+            if (challenge["id"] == incomplete_challenge->id) {
+                const auto& icon_paths = challenge["levelToIconPath"];
+                const auto& found_tier = icon_paths.find(incomplete_challenge->tier);
+                if (found_tier != icon_paths.end()) {
+                    incomplete_challenge->icon = LoadTexture(("assets" + found_tier.value().get<std::string>()).c_str());
+                }
+            }
+        }
+    };
+    find_challenge_icon_path(legacy);
 
     unconnected_nodes.insert({ legacy->id, legacy });
 
@@ -203,6 +255,7 @@ static void build_challenges(const nlohmann::json& global_challenges, const nloh
             challenge->achieved_time = 0;
         }
         challenge->next_tier = tier_to_next_tier(challenge->tier);
+        find_challenge_icon_path(challenge);
 
         unconnected_nodes.insert({ challenge->id, challenge });
         if (challenge->id == 0) {
@@ -248,6 +301,14 @@ static int init(int argc, char** argv) {
     memset(&_.tag_line_text_box, 0, sizeof(_.tag_line_text_box));
     _.is_game_name_text_box_active = false;
     _.is_tag_line_text_box_active = false;
+
+    std::ifstream champions_json("assets/champions.json");
+    _.champions_info = nlohmann::json::parse(champions_json);
+    std::ifstream challenges_json("assets/challenges.json");
+    _.challenges_local = nlohmann::json::parse(challenges_json);
+    // display_faction("shurima");
+    // display_champion("Zilean");
+    // exit(1);
 
     _.riot.init(argv[1]);
     _.asset_manager.init("http", "127.0.0.1", 8081);
@@ -464,6 +525,7 @@ static std::string tier_to_next_tier(const std::string& tier) {
         return "CHALLENGER";
     } else {
         assert(0);
+        return "";
     }
 }
 
@@ -552,6 +614,27 @@ static void draw_challenge_description(challenge_t* node, const Rectangle& rec, 
     draw_text_in_rec(node_description, rec);
 }
 
+static void draw_challenge_icon(challenge_t* node, const Rectangle& rec) {
+    if (node->icon.id <= 0) {
+        return ;
+    }
+
+    Rectangle square = {
+        .x = rec.x,
+        .y = rec.y,
+        .width = rec.height,
+        .height = rec.height
+    };
+    DrawTexturePro(
+        node->icon,
+        { .x = 0.0f, .y = 0.0f, .width = static_cast<float>(node->icon.width), .height = static_cast<float>(node->icon.height) },
+        square,
+        { 0.0f, 0.0f },
+        0.0f,
+        WHITE
+    );
+}
+
 static void draw_challenge_top(challenge_t* node, const Rectangle& rec, int is_detailed) {
     char buffer[64];
     snprintf(buffer, ARRAY_SIZE(buffer), "top %.2f%%", node->percentile * 100.0f);
@@ -594,6 +677,15 @@ static void draw_challenge_value_bar(challenge_t* node, const Rectangle& rec) {
     DrawRectangleRec(empty_rec, empty_color);
 }
 
+static void draw_challenge_specifics(challenge_t* node, const Rectangle& rec) {
+    if (node->id == 303510) {
+        // todo(david): left here
+        // display shurima champion icons
+    } else {
+        return ;
+    }
+}
+
 static void draw_challenge(challenge_t* node, const Rectangle& rec, int is_detailed) {
     DrawRectangleRec(
         rec,
@@ -603,34 +695,63 @@ static void draw_challenge(challenge_t* node, const Rectangle& rec, int is_detai
     if (is_detailed) {
         const float y_margin = rec.height * 0.01f;
         float y_fill = 1.0f;
-        const float description_rec_y_fill = y_fill * 0.5f;
+
+        const float challenge_icon_rec_y_fill = y_fill * 0.1f;
+        y_fill -= challenge_icon_rec_y_fill;
+        float y = rec.y + y_margin;
+        Rectangle challenge_icon_rec = {
+            .x = rec.x,
+            .y = y,
+            .width = rec.width,
+            .height = rec.height * challenge_icon_rec_y_fill - y_margin
+        };
+        y += challenge_icon_rec.height + y_margin;
+        draw_challenge_icon(node, challenge_icon_rec);
+
+        const float description_rec_y_fill = y_fill * 0.25f;
         y_fill -= description_rec_y_fill;
         Rectangle description_rec = {
             .x = rec.x,
-            .y = rec.y + y_margin,
+            .y = y,
             .width = rec.width,
             .height = rec.height * description_rec_y_fill - y_margin
         };
+        y += description_rec.height + y_margin;
         draw_challenge_description(node, description_rec, is_detailed);
 
-        const float top_rec_y_fill = y_fill * 0.2f;
+        const float top_rec_y_fill = y_fill * 0.1f;
         y_fill -= top_rec_y_fill;
         Rectangle top_rec = {
             .x = rec.x,
-            .y = description_rec.y + description_rec.height + y_margin,
+            .y = y,
             .width = rec.width,
             .height = rec.height * top_rec_y_fill - y_margin
         };
+        y += top_rec.height + y_margin;
         draw_challenge_top(node, top_rec, is_detailed);
 
-        const float value_bar_y_fill = y_fill;
+        const float value_bar_y_fill = y_fill * 0.2f;
+        y_fill -= value_bar_y_fill;
         Rectangle value_bar_rec = {
             .x = rec.x,
-            .y = top_rec.y + top_rec.height + y_margin,
+            .y = y,
             .width = rec.width,
             .height = rec.height * value_bar_y_fill - y_margin
         };
+        y += value_bar_rec.height + y_margin;
         draw_challenge_value_bar(node, value_bar_rec);
+
+
+        const float challenge_specifics_rec_y_fill = y_fill;
+        y_fill -= challenge_specifics_rec_y_fill;
+        Rectangle challenge_specifics_rec = {
+            .x = rec.x,
+            .y = y,
+            .width = rec.width,
+            .height = rec.height * challenge_specifics_rec_y_fill - y_margin
+        };
+        y += challenge_specifics_rec.height + y_margin;
+        draw_challenge_specifics(node, challenge_specifics_rec);
     } else {
         draw_challenge_description(node, rec, is_detailed);
     }
@@ -640,7 +761,7 @@ static void draw_current_challenge() {
     challenge_t* node      = _.current_challange;
     challenge_t* next_node = _.current_challange;
 
-    Rectangle outer_rec = { .x = _.window_w * 0.01f, .y = _.window_h * 0.01f, _.window_w * 0.98f, _.window_h * 0.98f };
+    Rectangle outer_rec = { .x = _.window_w * 0.01f, .y = _.window_h * 0.01f, .width = _.window_w * 0.98f, .height = _.window_h * 0.98f };
     DrawRectangleLinesEx(
         outer_rec,
         1.0f,
@@ -655,7 +776,7 @@ static void draw_current_challenge() {
             int depth;
         } states_stack[32];
         int states_stack_top = 0;
-        states_stack[states_stack_top++] = (struct state) {
+        states_stack[states_stack_top++] = {
             .rec   = outer_rec,
             .n     = node->children.size(),
             .depth = 0
@@ -678,13 +799,13 @@ static void draw_current_challenge() {
                     rec_left.height /= 2;
                 }
 
-                states_stack[states_stack_top++] = (struct state) {
+                states_stack[states_stack_top++] = {
                     .rec = rec_left,
                     .n = n_left,
                     .depth = state.depth + 1
                 };
                 assert(states_stack_top < ARRAY_SIZE(states_stack));
-                states_stack[states_stack_top++] = (struct state) {
+                states_stack[states_stack_top++] = {
                     .rec = rec_right,
                     .n = n_right,
                     .depth = state.depth + 1
@@ -753,41 +874,41 @@ static void draw_challenges_category_points() {
 
     const float font_size = 36;
     const float font_spacing = 1;
-    DrawTextEx(_.liberation_mono, "Collection",  (Vector2){ columns[0], rows[1] }, font_size, font_spacing, WHITE);
-    DrawTextEx(_.liberation_mono, "Expertise",   (Vector2){ columns[0], rows[2] }, font_size, font_spacing, WHITE);
-    DrawTextEx(_.liberation_mono, "Imagination", (Vector2){ columns[0], rows[3] }, font_size, font_spacing, WHITE);
-    DrawTextEx(_.liberation_mono, "Teamwork",    (Vector2){ columns[0], rows[4] }, font_size, font_spacing, WHITE);
-    DrawTextEx(_.liberation_mono, "Veterancy",   (Vector2){ columns[0], rows[5] }, font_size, font_spacing, WHITE);
+    DrawTextEx(_.liberation_mono, "Collection",  { columns[0], rows[1] }, font_size, font_spacing, WHITE);
+    DrawTextEx(_.liberation_mono, "Expertise",   { columns[0], rows[2] }, font_size, font_spacing, WHITE);
+    DrawTextEx(_.liberation_mono, "Imagination", { columns[0], rows[3] }, font_size, font_spacing, WHITE);
+    DrawTextEx(_.liberation_mono, "Teamwork",    { columns[0], rows[4] }, font_size, font_spacing, WHITE);
+    DrawTextEx(_.liberation_mono, "Veterancy",   { columns[0], rows[5] }, font_size, font_spacing, WHITE);
 
-    DrawTextEx(_.liberation_mono, "Current",    (Vector2){ columns[1], rows[0] }, font_size, font_spacing, WHITE);
-    DrawTextEx(_.liberation_mono, "Level",      (Vector2){ columns[2], rows[0] }, font_size, font_spacing, WHITE);
-    DrawTextEx(_.liberation_mono, "Max",        (Vector2){ columns[3], rows[0] }, font_size, font_spacing, WHITE);
-    DrawTextEx(_.liberation_mono, "Percentile", (Vector2){ columns[4], rows[0] }, font_size, font_spacing, WHITE);
+    DrawTextEx(_.liberation_mono, "Current",    { columns[1], rows[0] }, font_size, font_spacing, WHITE);
+    DrawTextEx(_.liberation_mono, "Level",      { columns[2], rows[0] }, font_size, font_spacing, WHITE);
+    DrawTextEx(_.liberation_mono, "Max",        { columns[3], rows[0] }, font_size, font_spacing, WHITE);
+    DrawTextEx(_.liberation_mono, "Percentile", { columns[4], rows[0] }, font_size, font_spacing, WHITE);
 
-    DrawTextEx(_.liberation_mono, TextFormat("%d", static_cast<int>(collection["current"])),                  (Vector2){ columns[1], rows[1] }, font_size, font_spacing, WHITE);
-    DrawTextEx(_.liberation_mono, static_cast<std::string>(collection["level"]).c_str(),                      (Vector2){ columns[2], rows[1] }, font_size, font_spacing, WHITE);
-    DrawTextEx(_.liberation_mono, TextFormat("%d", static_cast<int>(collection["max"])),                      (Vector2){ columns[3], rows[1] }, font_size, font_spacing, WHITE);
-    DrawTextEx(_.liberation_mono, TextFormat("%.2lf", 100.0 * static_cast<double>(collection["percentile"])), (Vector2){ columns[4], rows[1] }, font_size, font_spacing, WHITE);
+    DrawTextEx(_.liberation_mono, TextFormat("%d", static_cast<int>(collection["current"])),                  { columns[1], rows[1] }, font_size, font_spacing, WHITE);
+    DrawTextEx(_.liberation_mono, static_cast<std::string>(collection["level"]).c_str(),                      { columns[2], rows[1] }, font_size, font_spacing, WHITE);
+    DrawTextEx(_.liberation_mono, TextFormat("%d", static_cast<int>(collection["max"])),                      { columns[3], rows[1] }, font_size, font_spacing, WHITE);
+    DrawTextEx(_.liberation_mono, TextFormat("%.2lf", 100.0 * static_cast<double>(collection["percentile"])), { columns[4], rows[1] }, font_size, font_spacing, WHITE);
 
-    DrawTextEx(_.liberation_mono, TextFormat("%d", static_cast<int>(expertise["current"])),                  (Vector2){ columns[1], rows[2] }, font_size, font_spacing, WHITE);
-    DrawTextEx(_.liberation_mono, static_cast<std::string>(expertise["level"]).c_str(),                      (Vector2){ columns[2], rows[2] }, font_size, font_spacing, WHITE);
-    DrawTextEx(_.liberation_mono, TextFormat("%d", static_cast<int>(expertise["max"])),                      (Vector2){ columns[3], rows[2] }, font_size, font_spacing, WHITE);
-    DrawTextEx(_.liberation_mono, TextFormat("%.2lf", 100.0 * static_cast<double>(expertise["percentile"])), (Vector2){ columns[4], rows[2] }, font_size, font_spacing, WHITE);
+    DrawTextEx(_.liberation_mono, TextFormat("%d", static_cast<int>(expertise["current"])),                  { columns[1], rows[2] }, font_size, font_spacing, WHITE);
+    DrawTextEx(_.liberation_mono, static_cast<std::string>(expertise["level"]).c_str(),                      { columns[2], rows[2] }, font_size, font_spacing, WHITE);
+    DrawTextEx(_.liberation_mono, TextFormat("%d", static_cast<int>(expertise["max"])),                      { columns[3], rows[2] }, font_size, font_spacing, WHITE);
+    DrawTextEx(_.liberation_mono, TextFormat("%.2lf", 100.0 * static_cast<double>(expertise["percentile"])), { columns[4], rows[2] }, font_size, font_spacing, WHITE);
 
-    DrawTextEx(_.liberation_mono, TextFormat("%d", static_cast<int>(imagination["current"])),                  (Vector2){ columns[1], rows[3] }, font_size, font_spacing, WHITE);
-    DrawTextEx(_.liberation_mono, static_cast<std::string>(imagination["level"]).c_str(),                      (Vector2){ columns[2], rows[3] }, font_size, font_spacing, WHITE);
-    DrawTextEx(_.liberation_mono, TextFormat("%d", static_cast<int>(imagination["max"])),                      (Vector2){ columns[3], rows[3] }, font_size, font_spacing, WHITE);
-    DrawTextEx(_.liberation_mono, TextFormat("%.2lf", 100.0 * static_cast<double>(imagination["percentile"])), (Vector2){ columns[4], rows[3] }, font_size, font_spacing, WHITE);
+    DrawTextEx(_.liberation_mono, TextFormat("%d", static_cast<int>(imagination["current"])),                  { columns[1], rows[3] }, font_size, font_spacing, WHITE);
+    DrawTextEx(_.liberation_mono, static_cast<std::string>(imagination["level"]).c_str(),                      { columns[2], rows[3] }, font_size, font_spacing, WHITE);
+    DrawTextEx(_.liberation_mono, TextFormat("%d", static_cast<int>(imagination["max"])),                      { columns[3], rows[3] }, font_size, font_spacing, WHITE);
+    DrawTextEx(_.liberation_mono, TextFormat("%.2lf", 100.0 * static_cast<double>(imagination["percentile"])), { columns[4], rows[3] }, font_size, font_spacing, WHITE);
 
-    DrawTextEx(_.liberation_mono, TextFormat("%d", static_cast<int>(teamwork["current"])),                  (Vector2){ columns[1], rows[4] }, font_size, font_spacing, WHITE);
-    DrawTextEx(_.liberation_mono, static_cast<std::string>(teamwork["level"]).c_str(),                      (Vector2){ columns[2], rows[4] }, font_size, font_spacing, WHITE);
-    DrawTextEx(_.liberation_mono, TextFormat("%d", static_cast<int>(teamwork["max"])),                      (Vector2){ columns[3], rows[4] }, font_size, font_spacing, WHITE);
-    DrawTextEx(_.liberation_mono, TextFormat("%.2lf", 100.0 * static_cast<double>(teamwork["percentile"])), (Vector2){ columns[4], rows[4] }, font_size, font_spacing, WHITE);
+    DrawTextEx(_.liberation_mono, TextFormat("%d", static_cast<int>(teamwork["current"])),                  { columns[1], rows[4] }, font_size, font_spacing, WHITE);
+    DrawTextEx(_.liberation_mono, static_cast<std::string>(teamwork["level"]).c_str(),                      { columns[2], rows[4] }, font_size, font_spacing, WHITE);
+    DrawTextEx(_.liberation_mono, TextFormat("%d", static_cast<int>(teamwork["max"])),                      { columns[3], rows[4] }, font_size, font_spacing, WHITE);
+    DrawTextEx(_.liberation_mono, TextFormat("%.2lf", 100.0 * static_cast<double>(teamwork["percentile"])), { columns[4], rows[4] }, font_size, font_spacing, WHITE);
 
-    DrawTextEx(_.liberation_mono, TextFormat("%d", static_cast<int>(veterancy["current"])),                  (Vector2){ columns[1], rows[5] }, font_size, font_spacing, WHITE);
-    DrawTextEx(_.liberation_mono, static_cast<std::string>(veterancy["level"]).c_str(),                      (Vector2){ columns[2], rows[5] }, font_size, font_spacing, WHITE);
-    DrawTextEx(_.liberation_mono, TextFormat("%d", static_cast<int>(veterancy["max"])),                      (Vector2){ columns[3], rows[5] }, font_size, font_spacing, WHITE);
-    DrawTextEx(_.liberation_mono, TextFormat("%.2lf", 100.0 * static_cast<double>(veterancy["percentile"])), (Vector2){ columns[4], rows[5] }, font_size, font_spacing, WHITE);
+    DrawTextEx(_.liberation_mono, TextFormat("%d", static_cast<int>(veterancy["current"])),                  { columns[1], rows[5] }, font_size, font_spacing, WHITE);
+    DrawTextEx(_.liberation_mono, static_cast<std::string>(veterancy["level"]).c_str(),                      { columns[2], rows[5] }, font_size, font_spacing, WHITE);
+    DrawTextEx(_.liberation_mono, TextFormat("%d", static_cast<int>(veterancy["max"])),                      { columns[3], rows[5] }, font_size, font_spacing, WHITE);
+    DrawTextEx(_.liberation_mono, TextFormat("%.2lf", 100.0 * static_cast<double>(veterancy["percentile"])), { columns[4], rows[5] }, font_size, font_spacing, WHITE);
 }
 
 #if defined(PLATFORM_WEB)

@@ -1,0 +1,2 @@
+/usr/bin/ar qc libgilweb.a CMakeFiles/gilweb.dir/web.cpp.o
+/usr/bin/ranlib libgilweb.a

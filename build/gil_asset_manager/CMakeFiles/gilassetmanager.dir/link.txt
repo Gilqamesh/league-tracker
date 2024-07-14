@@ -1,0 +1,2 @@
+/usr/bin/ar qc libgilassetmanager.a CMakeFiles/gilassetmanager.dir/asset_manager.cpp.o
+/usr/bin/ranlib libgilassetmanager.a

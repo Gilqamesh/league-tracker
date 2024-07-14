@@ -1,0 +1,8 @@
+#ifndef CONFIG_H
+# define CONFIG_H
+
+# define LEAGUE_TRACKER_VERSION_MAJOR 0
+# define LEAGUE_TRACKER_VERSION_MINOR 1
+
+#endif // CONFIG_H
+
